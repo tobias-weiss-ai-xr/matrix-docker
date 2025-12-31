@@ -15,10 +15,11 @@ jobs:
 
     - name: Validate docker-compose.yml
       run: |
-        docker compose -f docker-compose.yml config
+        cd matrix && docker compose -f docker-compose.yml config
 
     - name: Validate all docker-compose files
       run: |
+        cd matrix
         for compose_file in docker-compose*.yml; do
           if [ -f "$compose_file" ]; then
             echo "Validating $compose_file..."
@@ -48,11 +49,11 @@ jobs:
 
     - name: Build Docker images
       run: |
-        docker compose build
+        cd matrix && docker compose build
 
     - name: Test container startup
       run: |
-        docker compose up -d
+        cd matrix && docker compose up -d
         echo "Waiting for services to start..."
         sleep 30
         docker compose ps
@@ -79,12 +80,12 @@ jobs:
     - name: Show logs
       if: always()
       run: |
-        docker compose logs --tail=100
+        cd matrix && docker compose logs --tail=100
 
     - name: Cleanup
       if: always()
       run: |
-        docker compose down -v
+        cd matrix && docker compose down -v
 
   security:
     runs-on: ubuntu-latest
@@ -113,6 +114,7 @@ jobs:
 
     - name: Check Matrix synapse configuration
       run: |
+        cd matrix
         if [ -f "synapse/config/homeserver.yaml" ]; then
           echo "✓ Synapse homeserver.yaml exists"
           python3 -c "import yaml; yaml.safe_load(open('synapse/config/homeserver.yaml'))" 2>/dev/null || \
@@ -121,12 +123,14 @@ jobs:
 
     - name: Check Postgres environment configuration
       run: |
+        cd matrix
         if [ -f "postgres/.env.example" ]; then
           echo "✓ Postgres .env.example exists"
         fi
 
     - name: Check required volumes
       run: |
+        cd matrix
         if [ -f "docker-compose.yml" ]; then
           # Check for required volume declarations
           if grep -q "volumes:" docker-compose.yml; then

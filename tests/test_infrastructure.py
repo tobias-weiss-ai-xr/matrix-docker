@@ -12,9 +12,10 @@ import yaml
 
 def test_docker_compose_file_exists():
     """Test that docker-compose.yml exists and is valid"""
-    assert os.path.exists('docker-compose.yml'), "docker-compose.yml not found"
+    compose_path = 'matrix/docker-compose.yml'
+    assert os.path.exists(compose_path), f"{compose_path} not found"
 
-    with open('docker-compose.yml', 'r') as f:
+    with open(compose_path, 'r') as f:
         compose = yaml.safe_load(f)
         assert compose is not None, "docker-compose.yml is not valid YAML"
         assert 'services' in compose, "No services defined in docker-compose.yml"
@@ -24,7 +25,8 @@ def test_docker_compose_file_exists():
 
 def test_matrix_services_defined():
     """Test that Matrix services are defined"""
-    with open('docker-compose.yml', 'r') as f:
+    compose_path = 'matrix/docker-compose.yml'
+    with open(compose_path, 'r') as f:
         compose = yaml.safe_load(f)
 
     services = compose.get('services', {})
@@ -64,7 +66,8 @@ def test_docker_compose_config():
 
 def test_port_configuration():
     """Test that required Matrix ports are configured"""
-    with open('docker-compose.yml', 'r') as f:
+    compose_path = 'matrix/docker-compose.yml'
+    with open(compose_path, 'r') as f:
         compose = yaml.safe_load(f)
 
     # Check for Matrix ports
@@ -90,7 +93,8 @@ def test_port_configuration():
 
 def test_volumes_defined():
     """Test that persistent volumes are configured"""
-    with open('docker-compose.yml', 'r') as f:
+    compose_path = 'matrix/docker-compose.yml'
+    with open(compose_path, 'r') as f:
         compose = yaml.safe_load(f)
 
     services = compose.get('services', {})
@@ -108,7 +112,8 @@ def test_volumes_defined():
 
 def test_network_configuration():
     """Test that networks are properly configured"""
-    with open('docker-compose.yml', 'r') as f:
+    compose_path = 'matrix/docker-compose.yml'
+    with open(compose_path, 'r') as f:
         compose = yaml.safe_load(f)
 
     networks = compose.get('networks', {})
@@ -120,9 +125,9 @@ def test_network_configuration():
 def test_environment_files():
     """Test that environment configuration files exist"""
     env_files = [
-        '.env.example',
-        'synapse/.env.example',
-        'postgres/.env.example',
+        'matrix/.env.example',
+        'matrix/synapse/.env.example',
+        'matrix/postgres/.env.example',
     ]
 
     found = []
