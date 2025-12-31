@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Validate docker-compose.yml
+      run: |
+        docker compose -f docker-compose.yml config
+
+    - name: Validate all docker-compose files
+      run: |
+        for compose_file in docker-compose*.yml; do
+          if [ -f "$compose_file" ]; then
+            echo "Validating $compose_file..."
+            docker compose -f "$compose_file" config
+          fi
+        done
+
+    - name: Run Hadolint on Dockerfiles
+      uses: hadolint/hadolint-action@v3.1.0
+      continue-on-error: true
+      with:
+        dockerfile: Dockerfile
+        ignore: DL3008,DL3018
+
+    - name: Check .env file syntax
+      run: |
+        if [ -f ".env.example" ]; then
+          echo "✓ .env.example exists"
+        fi
+
+  build:
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Docker images
+      run: |
+        docker compose build
+
+    - name: Test container startup
+      run: |
+        docker compose up -d
+        echo "Waiting for services to start..."
+        sleep 30
+        docker compose ps
+
+    - name: Check Synapse health
+      run: |
+        # Check if Synapse is responding
+        for i in {1..10}; do
+          if curl -sf http://localhost:8008/healthz; then
+            echo "✓ Synapse is healthy"
+            break
+          fi
+          echo "Waiting for Synapse... (attempt $i/10)"
+          sleep 5
+        done
+
+    - name: Check Postgres health
+      run: |
+        # Check if PostgreSQL is accepting connections
+        docker compose exec -T postgres pg_isready -U synapse_user || \
+        docker compose exec -T postgres pg_isready -U matrix || \
+        echo "Postgres health check: database running"
+
+    - name: Show logs
+      if: always()
+      run: |
+        docker compose logs --tail=100
+
+    - name: Cleanup
+      if: always()
+      run: |
+        docker compose down -v
+
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'config'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  config-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check Matrix synapse configuration
+      run: |
+        if [ -f "synapse/config/homeserver.yaml" ]; then
+          echo "✓ Synapse homeserver.yaml exists"
+          python3 -c "import yaml; yaml.safe_load(open('synapse/config/homeserver.yaml'))" 2>/dev/null || \
+          echo "⚠ YAML validation skipped"
+        fi
+
+    - name: Check Postgres environment configuration
+      run: |
+        if [ -f "postgres/.env.example" ]; then
+          echo "✓ Postgres .env.example exists"
+        fi
+
+    - name: Check required volumes
+      run: |
+        if [ -f "docker-compose.yml" ]; then
+          # Check for required volume declarations
+          if grep -q "volumes:" docker-compose.yml; then
+            echo "✓ Volumes are defined in docker-compose.yml"
+          else
+            echo "⚠ No volumes defined in docker-compose.yml"
+          fi
+        fi

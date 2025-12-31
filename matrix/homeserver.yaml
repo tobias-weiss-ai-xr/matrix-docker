@@ -1,0 +1,104 @@
+# Synapse Homeserver Configuration for graphwiz.ai
+
+server_name: "graphwiz.ai"
+pid_file: /data/homeserver.pid
+web_client_location: https://element.graphwiz.ai/
+signing_key_path: /data/graphwiz.ai.signing.key
+
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names:
+          - client
+          - federation
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: "mVVzYVCKgptv1Az8hYfY2cbNYBBo/EsL+k5HHH247uc="
+    database: synapse
+    host: 127.0.0.1
+    port: 5433
+    cp_min: 5
+    cp_max: 10
+
+# Media Store
+media_store_path: /data/media_store
+uploads_path: /data/uploads
+max_upload_size: 100M
+
+# Registration
+enable_registration: true
+enable_registration_captcha: false
+enable_registration_without_verification: true
+registration_shared_secret: "Q4GiViOILCxiy6plnpiDO9FwpHVOTmPzMidO4gUW2ls="
+
+# Turn Server
+turn_user_lifetime: 86400000
+turn_uris:
+  - "turn:turn.graphwiz.ai:3478?transport=udp"
+  - "turn:turn.graphwiz.ai:3478?transport=tcp"
+  - "turns:turn.graphwiz.ai:5349?transport=tcp"
+turn_shared_secret: "kHAOjrorG4p9ubB6LHEbGUOVKT8AW3SFBGgCWaPWoGo="
+
+# Federation
+federation_domain_whitelist:
+  - "*"
+
+# Rate Limiting
+rc_login:
+  address:
+    per_second: 0.17
+    burst: 3
+  account:
+    per_second: 0.17
+    burst: 3
+  failed_attempts:
+    per_second: 0.17
+    burst: 3
+
+# Redis (optional - for better performance)
+#redis:
+#  enabled: true
+#  host: redis
+#  port: 6379
+
+# Metrics
+enable_metrics: false
+
+# Statistics
+report_stats: false
+
+# Server notice room
+server_notices:
+  system_mxid_localpart: "system"
+  system_messages:
+    enabled: true
+    send_to_guests: true
+
+# URL previews
+url_preview_enabled: true
+url_preview_ip_range_blacklist:
+  - '127.0.0.0/8'
+  - '10.0.0.0/8'
+  - '172.16.0.0/12'
+  - '192.168.0.0/16'
+
+# Trusted key servers
+trusted_key_servers:
+  - server_name: "matrix.org"
+suppress_key_server_warning: true
+
+# Allow rooms to be published
+room_list_publication_rules:
+  - room_id: "*"
+    action: allow
+
+# Enable account validity
+account_validity:
+  enabled: false

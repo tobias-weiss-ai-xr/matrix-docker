@@ -1,92 +1,90 @@
-version: '3'
-
 services:
-  traefik:
-    image: "traefik:${TRAEFIK_VERSION}"
-    restart: "always"
-    command:
-      - "--api=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      - "--certificatesresolvers.letls.acme.email=admin@${DOMAIN}"
-      - "--certificatesresolvers.letls.acme.storage=/certs/acme.json"
-      - "--certificatesresolvers.letls.acme.httpchallenge=true"
-      - "--certificatesresolvers.letls.acme.httpchallenge.entrypoint=web"
-    ports:
-      - "443:443"
-      - "80:80"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - traefik_certs:/certs
-
-  nginx:
-    image: "nginx:${NGINX_VERSION}"
-    restart: "always"
-    volumes:
-      - nginx_conf:/etc/nginx/conf.d
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.nginx.entrypoints=websecure
-      - traefik.http.routers.nginx.rule=Host(`${DOMAIN}`)
-      - traefik.http.routers.nginx.tls=true
-      - traefik.http.routers.nginx.tls.certresolver=letls
-
+  # Synapse - Matrix Homeserver
   synapse:
-    image: "docker.io/matrixdotorg/synapse:${SYNAPSE_VERSION}"
+    image: matrixdotorg/synapse:latest
     restart: unless-stopped
+    container_name: matrix-synapse
+    network_mode: host
+    user: "0:0"
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - "chown -R 988:988 /data && exec /start.py"
     environment:
-      - SYNAPSE_CONFIG_PATH=/data/homeserver.yaml
+      - SYNAPSE_CONFIG_PATH=/config/homeserver.yaml
+      - SYNAPSE_SERVER_NAME=graphwiz.ai
+      - SYNAPSE_REPORT_STATS=no
+      - UID=988
+      - GID=988
     volumes:
       - synapse_data:/data
+      - ./homeserver.yaml:/config/homeserver.yaml:ro
     depends_on:
       - synapse_db
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.synapse.entrypoints=websecure
-      - traefik.http.routers.synapse.rule=Host(`matrix.${DOMAIN}`)
-      - traefik.http.routers.synapse.tls=true
-      - traefik.http.routers.synapse.tls.certresolver=letls
+      - "traefik.enable=true"
+      - "traefik.http.routers.matrix-synapse.rule=Host(`matrix.graphwiz.ai`)"
+      - "traefik.http.routers.matrix-synapse.entrypoints=websecure"
+      - "traefik.http.routers.matrix-synapse.tls=true"
+      - "traefik.http.routers.matrix-synapse.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.matrix-synapse.service=matrix-synapse"
+      - "traefik.http.services.matrix-synapse.loadbalancer.server.port=8008"
 
+  # Synapse Database
   synapse_db:
-    image: "docker.io/postgres:${POSTGRES_VERSION}"
+    image: postgres:17.5
     restart: unless-stopped
+    container_name: matrix-synapse-db
+    network_mode: host
     environment:
       - POSTGRES_USER=synapse
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PASSWORD=mVVzYVCKgptv1Az8hYfY2cbNYBBo/EsL+k5HHH247uc=
+      - POSTGRES_DB=synapse
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    command:
+      - "postgres"
+      - "-c"
+      - "port=5433"
     volumes:
       - synapse_db_data:/var/lib/postgresql/data
 
+  # Coturn - TURN/STUN server for VoIP/video calls
   coturn:
-    image: "instrumentisto/coturn:${COTURN_VERSION}"
-    restart: "unless-stopped"
-    volumes:
-      - coturn:/etc/coturn
-    ports:
-      - "49160-49200:49160-49200/udp"
-      - "3478:3478"
-      - "5349:5349"
-
-  element:
-    image: "vectorim/element-web:${ELEMENT_VERSION}"
+    image: instrumentisto/coturn:latest
     restart: unless-stopped
+    container_name: matrix-coturn
+    network_mode: host
+    environment:
+      - TURN_PORT=3478
+      - TURNS_PORT=5349
     volumes:
-      - element:/app
+      - coturn_data:/var/lib/coturn
+
+  # Matrix Federation (delegation)
+  matrix-well-known:
+    image: nginx:alpine
+    restart: unless-stopped
+    container_name: matrix-well-known
+    network_mode: host
+    volumes:
+      - ./well-known-8083.conf:/etc/nginx/conf.d/default.conf:ro
+    command:
+      - "sh"
+      - "-c"
+      - "nginx -g 'daemon off;' -c /etc/nginx/nginx.conf"
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.element.entrypoints=websecure
-      - traefik.http.routers.element.rule=Host(`web.${DOMAIN}`)
-      - traefik.http.routers.element.tls=true
-      - traefik.http.routers.element.tls.certresolver=letls
-      - traefik.http.services.element.loadbalancer.server.port=80
+      - "traefik.enable=true"
+      - "traefik.http.routers.matrix-well-known.rule=Host(`graphwiz.ai`) && (PathPrefix(`/.well-known/matrix/server`) || PathPrefix(`/.well-known/matrix/client`))"
+      - "traefik.http.routers.matrix-well-known.entrypoints=websecure"
+      - "traefik.http.routers.matrix-well-known.tls=true"
+      - "traefik.http.routers.matrix-well-known.service=matrix-well-known"
+      - "traefik.http.services.matrix-well-known.loadbalancer.server.port=8083"
+      - "traefik.http.routers.matrix-well-known.priority=100"
+
 volumes:
-  traefik_certs:
-  nginx_conf:
   synapse_data:
+    driver: local
   synapse_db_data:
-  coturn:
-  element:
+    driver: local
+  coturn_data:
+    driver: local
